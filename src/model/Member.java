@@ -28,10 +28,29 @@ public class Member {
         return name;
     }
 
-    public void setName(String name) {
+    /** 이름 검증. 입력 단계(UI)와 setter에서 모두 사용한다. */
+    public static void validateName(String name) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("이름은 비어 있을 수 없습니다.");
         }
+    }
+
+    /** 전화번호 검증: 숫자와 하이픈만 허용하며, 숫자는 9~11자리여야 한다. */
+    public static void validatePhone(String phone) {
+        if (phone == null || phone.isBlank()) {
+            throw new IllegalArgumentException("전화번호를 입력해주세요.");
+        }
+        if (!phone.matches("[0-9-]+")) {
+            throw new IllegalArgumentException("전화번호는 숫자와 '-'만 입력할 수 있습니다.");
+        }
+        int digits = phone.replace("-", "").length();
+        if (digits < 9 || digits > 11) {
+            throw new IllegalArgumentException("전화번호 자릿수가 올바르지 않습니다. (숫자 9~11자리)");
+        }
+    }
+
+    public void setName(String name) {
+        validateName(name);
         this.name = name.trim();
     }
 
@@ -39,15 +58,8 @@ public class Member {
         return phone;
     }
 
-    /** 전화번호는 숫자와 하이픈만 허용하며, 숫자는 9~11자리여야 한다. */
     public void setPhone(String phone) {
-        if (phone == null || !phone.matches("[0-9-]+")) {
-            throw new IllegalArgumentException("전화번호는 숫자와 '-'만 입력할 수 있습니다.");
-        }
-        int digits = phone.replace("-", "").length();
-        if (digits < 9 || digits > 11) {
-            throw new IllegalArgumentException("전화번호 자릿수가 올바르지 않습니다.");
-        }
+        validatePhone(phone);
         this.phone = phone;
     }
 

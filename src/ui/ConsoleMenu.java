@@ -77,8 +77,8 @@ public class ConsoleMenu {
     }
 
     private void registerMember() {
-        String name = input.readString("이름 > ");
-        String phone = input.readString("전화번호 (예: 010-1234-5678) > ");
+        String name = input.readValidated("이름 > ", Member::validateName);
+        String phone = readNewPhone("전화번호 (예: 010-1234-5678) > ", null);
         int hours = input.readInt("충전할 이용권 시간(시간 단위, 0~100) > ", 0, 100);
         Member member = memberService.register(name, phone, hours * 60);
         System.out.println("등록 완료: " + member);
@@ -108,14 +108,22 @@ public class ConsoleMenu {
         String id = input.readString("수정할 회원 번호 (예: M001) > ").toUpperCase();
         Member current = memberService.find(id);
         System.out.println("현재 정보: " + current);
-        String name = input.readString("새 이름 > ");
-        String phone = input.readString("새 전화번호 > ");
+        String name = input.readValidated("새 이름 > ", Member::validateName);
+        String phone = readNewPhone("새 전화번호 (예: 010-1234-5678) > ", id);
         memberService.update(id, name, phone);
         System.out.println("수정 완료: " + memberService.find(id));
     }
 
+    /** 전화번호를 입력받는 즉시 형식과 중복을 검사한다. 오류면 같은 항목을 다시 입력받는다. */
+    private String readNewPhone(String prompt, String excludeId) {
+        return input.readValidated(prompt, phone -> {
+            Member.validatePhone(phone);
+            memberService.checkPhoneAvailable(phone, excludeId);
+        });
+    }
+
     private void chargeMember() {
-        String id = input.readString("충전할 회원 번호 > ").toUpperCase();
+        String id = input.readString("충전할 회원 번호 (예: M001) > ").toUpperCase();
         memberService.find(id);
         int hours = input.readInt("충전할 시간(시간 단위, 1~100) > ", 1, 100);
         memberService.charge(id, hours * 60);
@@ -123,7 +131,7 @@ public class ConsoleMenu {
     }
 
     private void deleteMember() {
-        String id = input.readString("삭제할 회원 번호 > ").toUpperCase();
+        String id = input.readString("삭제할 회원 번호 (예: M001) > ").toUpperCase();
         Member member = memberService.find(id);
         if (input.confirm("정말 삭제할까요? " + member)) {
             memberService.delete(id);

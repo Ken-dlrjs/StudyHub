@@ -16,9 +16,7 @@ public class MemberService {
 
     /** 새 회원을 등록하고, 자동 부여된 회원 번호가 담긴 Member를 반환한다. */
     public Member register(String name, String phone, int remainingMinutes) {
-        if (findByPhone(phone) != null) {
-            throw new DuplicateException("이미 등록된 전화번호입니다: " + phone);
-        }
+        checkPhoneAvailable(phone, null);
         Member member = new Member(nextId(), name, phone, remainingMinutes);
         members.put(member.getId(), member);
         return member;
@@ -59,12 +57,22 @@ public class MemberService {
 
     public void update(String id, String name, String phone) {
         Member member = find(id);
-        Member other = findByPhone(phone);
-        if (other != null && !other.getId().equals(id)) {
-            throw new DuplicateException("이미 다른 회원이 사용 중인 전화번호입니다: " + phone);
-        }
+        checkPhoneAvailable(phone, id);
         member.setName(name);
         member.setPhone(phone);
+    }
+
+    /**
+     * 다른 회원이 이미 쓰는 전화번호인지 검사한다. 중복이면 DuplicateException.
+     * UI에서 번호를 입력받는 즉시 호출할 수 있도록 public으로 둔다.
+     *
+     * @param excludeId 검사에서 제외할 회원 번호 (정보 수정 시 본인 번호). 등록 시에는 null
+     */
+    public void checkPhoneAvailable(String phone, String excludeId) {
+        Member other = findByPhone(phone);
+        if (other != null && !other.getId().equals(excludeId)) {
+            throw new DuplicateException("이미 사용 중인 전화번호입니다: " + phone);
+        }
     }
 
     public void charge(String id, int minutes) {

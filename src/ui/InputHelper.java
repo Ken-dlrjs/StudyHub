@@ -1,6 +1,9 @@
 package ui;
 
+import exception.DuplicateException;
+
 import java.util.Scanner;
+import java.util.function.Consumer;
 
 /**
  * 콘솔 입력 전용 유틸 클래스.
@@ -22,6 +25,24 @@ public class InputHelper {
                 return line;
             }
             System.out.println("  ! 값을 입력해주세요.");
+        }
+    }
+
+    /**
+     * 입력 즉시 검증하는 문자열 입력.
+     * validator가 예외를 던지면 오류 메시지를 보여주고 같은 항목을 바로 다시 입력받는다.
+     * (다음 항목으로 넘어가지 않는다.)
+     */
+    public String readValidated(String prompt, Consumer<String> validator) {
+        while (true) {
+            System.out.print(prompt);
+            String line = scanner.nextLine().trim();
+            try {
+                validator.accept(line);
+                return line;
+            } catch (IllegalArgumentException | DuplicateException e) {
+                System.out.println("  ! " + e.getMessage());
+            }
         }
     }
 
