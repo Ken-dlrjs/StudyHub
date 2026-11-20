@@ -344,6 +344,17 @@ public class ConsoleMenu {
     }
 
     private void cancelReservation() {
+        List<Reservation> all = reservationService.findAll();
+        if (all.isEmpty()) {
+            System.out.println("예약 내역이 없습니다.");
+            return;
+        }
+        System.out.println("[전체 예약 목록]");
+        printReservations(all);
+        if (reservationService.findByStatus(ReservationStatus.RESERVED).isEmpty()) {
+            System.out.println("취소할 수 있는 예약(예약 상태)이 없습니다.");
+            return;
+        }
         String id = input.readString("취소할 예약 번호 (예: B0001) > ");
         Reservation r = reservationService.find(id);
         if (r.getStatus() != ReservationStatus.RESERVED) {
