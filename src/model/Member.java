@@ -83,6 +83,18 @@ public class Member {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Member)) return false;
+        return id.equals(((Member) o).id);
+    }
+
+    @Override
+    public int hashCode() {
+        return id.hashCode();
+    }
+
+    @Override
     public String toString() {
         return String.format("[%s] %s | %s | 잔여 %d시간 %02d분",
                 id, name, phone, remainingMinutes / 60, remainingMinutes % 60);

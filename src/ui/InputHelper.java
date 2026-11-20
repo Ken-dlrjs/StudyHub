@@ -2,6 +2,8 @@ package ui;
 
 import exception.DuplicateException;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.Scanner;
 import java.util.function.Consumer;
 
@@ -60,6 +62,36 @@ public class InputHelper {
                 return value;
             } catch (NumberFormatException e) {
                 System.out.println("  ! 숫자만 입력할 수 있습니다.");
+            }
+        }
+    }
+
+    /** 빈 입력도 허용하는 문자열 입력. (엔터만 누르면 "" 반환) */
+    public String readOptional(String prompt) {
+        System.out.print(prompt);
+        return scanner.nextLine().trim();
+    }
+
+    /**
+     * 날짜(yyyy-MM-dd)를 입력받는다. 엔터만 누르면 defaultDate를 반환한다.
+     * minDate가 null이 아니면 그보다 이전 날짜는 다시 입력받는다.
+     */
+    public LocalDate readDate(String prompt, LocalDate defaultDate, LocalDate minDate) {
+        while (true) {
+            System.out.print(prompt);
+            String line = scanner.nextLine().trim();
+            if (line.isEmpty()) {
+                return defaultDate;
+            }
+            try {
+                LocalDate date = LocalDate.parse(line);
+                if (minDate != null && date.isBefore(minDate)) {
+                    System.out.println("  ! " + minDate + " 이전 날짜는 선택할 수 없습니다.");
+                    continue;
+                }
+                return date;
+            } catch (DateTimeParseException e) {
+                System.out.println("  ! 날짜 형식이 올바르지 않습니다. (예: 2026-11-25)");
             }
         }
     }

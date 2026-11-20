@@ -1,4 +1,5 @@
 import service.MemberService;
+import service.ReservationService;
 import service.SeatService;
 import ui.ConsoleMenu;
 
@@ -12,9 +13,10 @@ public class Main {
     public static void main(String[] args) {
         MemberService memberService = new MemberService();
         SeatService seatService = new SeatService();
+        ReservationService reservationService = new ReservationService();
 
         try (Scanner scanner = new Scanner(System.in)) {
-            new ConsoleMenu(memberService, seatService, scanner).run();
+            new ConsoleMenu(memberService, seatService, reservationService, scanner).run();
         }
     }
 }
