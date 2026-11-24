@@ -1,10 +1,13 @@
 package model;
 
+import exception.DataFileException;
+import io.CsvConvertible;
+
 /**
  * 회원 정보. 모든 필드는 private이며, setter에서 값을 검증한다.
  * 잔여 이용 시간은 '분' 단위로 저장한다. (퇴실 시 실제 이용 시간을 정확히 차감하기 위함)
  */
-public class Member {
+public class Member implements CsvConvertible {
     private final String id;         // 회원 번호 (예: M001)
     private String name;
     private String phone;
@@ -80,6 +83,25 @@ public class Member {
             throw new IllegalArgumentException("충전 시간은 1분 이상이어야 합니다.");
         }
         this.remainingMinutes += minutes;
+    }
+
+    // ---------------- CSV 변환 ----------------
+
+    @Override
+    public String[] toCsvFields() {
+        return new String[]{id, name, phone, String.valueOf(remainingMinutes)};
+    }
+
+    /** CSV 필드(id,name,phone,remainingMinutes)로 회원을 만든다. 형식이 틀리면 예외 */
+    public static Member fromCsv(String[] f) {
+        if (f.length != 4) {
+            throw new DataFileException("회원 필드 수가 4개가 아닙니다. (" + f.length + "개)");
+        }
+        try {
+            return new Member(f[0].trim(), f[1], f[2].trim(), Integer.parseInt(f[3].trim()));
+        } catch (NumberFormatException e) {
+            throw new DataFileException("잔여 시간이 숫자가 아닙니다: " + f[3]);
+        }
     }
 
     @Override

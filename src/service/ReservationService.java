@@ -1,5 +1,6 @@
 package service;
 
+import exception.DuplicateException;
 import exception.InsufficientTimeException;
 import exception.NotFoundException;
 import exception.ReservationConflictException;
@@ -73,6 +74,26 @@ public class ReservationService {
 
     public void cancel(String reservationId) {
         find(reservationId).cancel();
+    }
+
+    /** 파일에서 불러온 예약을 그대로 추가한다. 같은 번호가 있으면 DuplicateException */
+    public void add(Reservation r) {
+        for (Reservation existing : reservations) {
+            if (existing.getId().equals(r.getId())) {
+                throw new DuplicateException("이미 존재하는 예약 번호입니다: " + r.getId());
+            }
+        }
+        reservations.add(r);
+    }
+
+    /** 회원 삭제 시 그 회원의 지난 예약 기록(취소·완료)을 함께 지운다. 지운 건수를 반환한다. */
+    public int removeByMember(String memberId) {
+        if (hasActiveReservation(memberId)) {
+            throw new IllegalStateException("진행 중인 예약이 있는 회원의 기록은 지울 수 없습니다.");
+        }
+        int before = reservations.size();
+        reservations.removeIf(r -> r.getMember().getId().equals(memberId));
+        return before - reservations.size();
     }
 
     // ---------------- 입실 / 퇴실 ----------------

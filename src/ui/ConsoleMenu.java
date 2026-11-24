@@ -1,6 +1,8 @@
 package ui;
 
+import exception.DataFileException;
 import exception.StudyHubException;
+import io.FileManager;
 import model.FocusSeat;
 import model.Member;
 import model.NormalSeat;
@@ -26,13 +28,15 @@ public class ConsoleMenu {
     private final MemberService memberService;
     private final SeatService seatService;
     private final ReservationService reservationService;
+    private final FileManager fileManager;
     private final InputHelper input;
 
     public ConsoleMenu(MemberService memberService, SeatService seatService,
-                       ReservationService reservationService, Scanner scanner) {
+                       ReservationService reservationService, FileManager fileManager, Scanner scanner) {
         this.memberService = memberService;
         this.seatService = seatService;
         this.reservationService = reservationService;
+        this.fileManager = fileManager;
         this.input = new InputHelper(scanner);
     }
 
@@ -52,19 +56,33 @@ public class ConsoleMenu {
                 case 3 -> reservationMenu();
                 case 4 -> checkInOutMenu();
                 case 0 -> {
-                    System.out.println("프로그램을 종료합니다.");
+                    save();
+                    System.out.println("데이터를 저장하고 프로그램을 종료합니다.");
                     return;
                 }
             }
         }
     }
 
-    /** 하위 메뉴 동작을 실행하고, 발생한 예외를 오류 메시지로 출력한다. */
+    /**
+     * 하위 메뉴 동작을 실행하고, 발생한 예외를 오류 메시지로 출력한다.
+     * 정상적으로 끝나면 바로 파일에 저장해서, 프로그램이 갑자기 꺼져도 데이터가 남게 한다.
+     */
     private void runSafely(Runnable action) {
         try {
             action.run();
+            save();
         } catch (IllegalArgumentException | IllegalStateException | StudyHubException e) {
             System.out.println("  ! 오류: " + e.getMessage());
+        }
+    }
+
+    /** 저장. 실패해도 프로그램은 계속 실행하고 경고만 보여준다. */
+    public void save() {
+        try {
+            fileManager.saveAll(memberService, reservationService);
+        } catch (DataFileException e) {
+            System.out.println("  ! 저장 오류: " + e.getMessage() + " (데이터는 메모리에 남아 있습니다)");
         }
     }
 
@@ -156,8 +174,9 @@ public class ConsoleMenu {
             throw new IllegalStateException("진행 중인 예약(예약·이용 중)이 있는 회원은 삭제할 수 없습니다. 먼저 예약을 취소하거나 퇴실 처리하세요.");
         }
         if (input.confirm("정말 삭제할까요? " + member)) {
+            int removed = reservationService.removeByMember(id);
             memberService.delete(id);
-            System.out.println("삭제 완료.");
+            System.out.println("삭제 완료." + (removed > 0 ? " (지난 예약 기록 " + removed + "건도 함께 삭제)" : ""));
         } else {
             System.out.println("삭제를 취소했습니다.");
         }
