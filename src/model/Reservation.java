@@ -73,6 +73,14 @@ public class Reservation implements CsvConvertible {
         status = ReservationStatus.CANCELED;
     }
 
+    /** 입실하지 않고 예약 시간이 끝난 예약을 노쇼로 바꾼다. */
+    public void markNoShow() {
+        if (status != ReservationStatus.RESERVED) {
+            throw new IllegalStateException("노쇼 처리할 수 없는 상태입니다: " + status.getLabel());
+        }
+        status = ReservationStatus.NO_SHOW;
+    }
+
     /** 좌석·시간 변경. 충돌 검사는 서비스에서 먼저 끝낸 뒤 호출한다. */
     public void change(Seat newSeat, LocalDateTime newStart, LocalDateTime newEnd) {
         if (status != ReservationStatus.RESERVED) {
@@ -151,7 +159,7 @@ public class Reservation implements CsvConvertible {
         boolean hasIn = checkInTime != null;
         boolean hasOut = checkOutTime != null;
         boolean ok = switch (status) {
-            case RESERVED, CANCELED -> !hasIn && !hasOut;
+            case RESERVED, CANCELED, NO_SHOW -> !hasIn && !hasOut;
             case CHECKED_IN -> hasIn && !hasOut;
             case COMPLETED -> hasIn && hasOut && !checkOutTime.isBefore(checkInTime);
         };

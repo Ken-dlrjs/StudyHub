@@ -1,3 +1,4 @@
+import exception.DataFileException;
 import io.FileManager;
 import service.MemberService;
 import service.ReservationService;
@@ -25,6 +26,16 @@ public class Main {
         System.out.println("데이터 폴더: " + dataDir.toAbsolutePath());
         fileManager.loadAll(memberService, seatService, reservationService)
                 .forEach(System.out::println);
+
+        int noShows = reservationService.processNoShows().size();
+        if (noShows > 0) {
+            System.out.println("노쇼 처리: 입실하지 않고 시간이 지난 예약 " + noShows + "건");
+            try {
+                fileManager.saveAll(memberService, reservationService);
+            } catch (DataFileException e) {
+                System.out.println("  ! 저장 오류: " + e.getMessage());
+            }
+        }
 
         try (Scanner scanner = new Scanner(System.in)) {
             ConsoleMenu menu = new ConsoleMenu(memberService, seatService, reservationService, fileManager, scanner);

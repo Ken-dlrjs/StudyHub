@@ -1,6 +1,7 @@
 package ui;
 
 import exception.DataFileException;
+import exception.NotFoundException;
 import exception.StudyHubException;
 import io.FileManager;
 import model.FocusSeat;
@@ -49,7 +50,7 @@ public class ConsoleMenu {
             System.out.println(" 3. 예약 관리");
             System.out.println(" 4. 입실 / 퇴실");
             System.out.println(" 0. 종료");
-            int choice = input.readInt("메뉴 선택 > ", 0, 4);
+            int choice = input.readMenu("메뉴 선택 > ", 0, 4);
             switch (choice) {
                 case 1 -> memberMenu();
                 case 2 -> seatMenu();
@@ -70,10 +71,24 @@ public class ConsoleMenu {
      */
     private void runSafely(Runnable action) {
         try {
+            processNoShows();
             action.run();
             save();
+        } catch (InputCancelledException e) {
+            // 모든 항목을 입력하기 전에는 데이터를 바꾸지 않으므로, 저장할 것도 없다.
+            System.out.println("  - " + e.getMessage());
         } catch (IllegalArgumentException | IllegalStateException | StudyHubException e) {
             System.out.println("  ! 오류: " + e.getMessage());
+        }
+    }
+
+    /** 시간이 지난 미입실 예약을 노쇼로 바꾸고, 있으면 알려준다. */
+    private void processNoShows() {
+        List<Reservation> noShows = reservationService.processNoShows();
+        if (!noShows.isEmpty()) {
+            System.out.println("  - 노쇼 처리(입실하지 않고 예약 시간이 지남): " + noShows.size() + "건");
+            noShows.forEach(r -> System.out.println("    " + r));
+            save();
         }
     }
 
@@ -90,7 +105,7 @@ public class ConsoleMenu {
 
     private void memberMenu() {
         while (true) {
-            System.out.println("\n--- 회원 관리 ---");
+            System.out.println("\n--- 회원 관리 --- (입력 중 q: 취소)");
             System.out.println(" 1. 회원 등록");
             System.out.println(" 2. 전체 회원 조회");
             System.out.println(" 3. 이름으로 검색");
@@ -98,7 +113,7 @@ public class ConsoleMenu {
             System.out.println(" 5. 이용권 충전");
             System.out.println(" 6. 회원 삭제");
             System.out.println(" 0. 이전 메뉴");
-            int choice = input.readInt("메뉴 선택 > ", 0, 6);
+            int choice = input.readMenu("메뉴 선택 > ", 0, 6);
             if (choice == 0) return;
             runSafely(() -> {
                 switch (choice) {
@@ -132,6 +147,10 @@ public class ConsoleMenu {
     }
 
     private void searchMembers() {
+        if (memberService.count() == 0) {
+            System.out.println("등록된 회원이 없습니다.");
+            return;
+        }
         String keyword = input.readString("검색할 이름 > ");
         List<Member> result = memberService.searchByName(keyword);
         if (result.isEmpty()) {
@@ -141,14 +160,66 @@ public class ConsoleMenu {
         result.forEach(m -> System.out.println("  " + m));
     }
 
+    /**
+     * 전체 회원 목록을 보여주고 회원 번호를 입력받는다.
+     * 회원이 없으면 안내 후 null을 반환하고, 없는 번호면 바로 다시 입력받는다.
+     */
+    private Member selectMember(String prompt) {
+        List<Member> list = memberService.findAll();
+        if (list.isEmpty()) {
+            System.out.println("등록된 회원이 없습니다.");
+            return null;
+        }
+        System.out.println("[전체 회원 목록]");
+        list.forEach(m -> System.out.println("  " + m));
+        while (true) {
+            String id = input.readString(prompt + " (예: M001) > ").toUpperCase();
+            try {
+                return memberService.find(id);
+            } catch (NotFoundException e) {
+                System.out.println("  ! " + e.getMessage());
+            }
+        }
+    }
+
     private void updateMember() {
-        String id = input.readString("수정할 회원 번호 (예: M001) > ").toUpperCase();
-        Member current = memberService.find(id);
+        Member current = selectMember("수정할 회원 번호");
+        if (current == null) return;
         System.out.println("현재 정보: " + current);
-        String name = input.readValidated("새 이름 > ", Member::validateName);
-        String phone = readNewPhone("새 전화번호 (예: 010-1234-5678) > ", id);
-        memberService.update(id, name, phone);
-        System.out.println("수정 완료: " + memberService.find(id));
+        String name = input.readValidated("새 이름 (엔터=" + current.getName() + " 유지) > ",
+                current.getName(), Member::validateName);
+        String phone = input.readValidated("새 전화번호 (엔터=" + current.getPhone() + " 유지) > ",
+                current.getPhone(), p -> {
+                    Member.validatePhone(p);
+                    memberService.checkPhoneAvailable(p, current.getId());
+                });
+        memberService.update(current.getId(), name, phone);
+        System.out.println("수정 완료: " + current);
+    }
+
+    private void chargeMember() {
+        Member member = selectMember("충전할 회원 번호");
+        if (member == null) return;
+        System.out.printf("현재 잔여 시간: %d시간 %02d분%n",
+                member.getRemainingMinutes() / 60, member.getRemainingMinutes() % 60);
+        int hours = input.readInt("충전할 시간(시간 단위, 1~100) > ", 1, 100);
+        memberService.charge(member.getId(), hours * 60);
+        System.out.println("충전 완료: " + member);
+    }
+
+    private void deleteMember() {
+        Member member = selectMember("삭제할 회원 번호");
+        if (member == null) return;
+        if (reservationService.hasActiveReservation(member.getId())) {
+            throw new IllegalStateException("진행 중인 예약(예약·이용 중)이 있는 회원은 삭제할 수 없습니다. 먼저 예약을 취소하거나 퇴실 처리하세요.");
+        }
+        if (input.confirm("정말 삭제할까요? " + member)) {
+            int removed = reservationService.removeByMember(member.getId());
+            memberService.delete(member.getId());
+            System.out.println("삭제 완료." + (removed > 0 ? " (지난 예약 기록 " + removed + "건도 함께 삭제)" : ""));
+        } else {
+            System.out.println("삭제를 취소했습니다.");
+        }
     }
 
     /** 전화번호를 입력받는 즉시 형식과 중복을 검사한다. 오류면 같은 항목을 다시 입력받는다. */
@@ -159,40 +230,17 @@ public class ConsoleMenu {
         });
     }
 
-    private void chargeMember() {
-        String id = input.readString("충전할 회원 번호 (예: M001) > ").toUpperCase();
-        memberService.find(id);
-        int hours = input.readInt("충전할 시간(시간 단위, 1~100) > ", 1, 100);
-        memberService.charge(id, hours * 60);
-        System.out.println("충전 완료: " + memberService.find(id));
-    }
-
-    private void deleteMember() {
-        String id = input.readString("삭제할 회원 번호 (예: M001) > ").toUpperCase();
-        Member member = memberService.find(id);
-        if (reservationService.hasActiveReservation(id)) {
-            throw new IllegalStateException("진행 중인 예약(예약·이용 중)이 있는 회원은 삭제할 수 없습니다. 먼저 예약을 취소하거나 퇴실 처리하세요.");
-        }
-        if (input.confirm("정말 삭제할까요? " + member)) {
-            int removed = reservationService.removeByMember(id);
-            memberService.delete(id);
-            System.out.println("삭제 완료." + (removed > 0 ? " (지난 예약 기록 " + removed + "건도 함께 삭제)" : ""));
-        } else {
-            System.out.println("삭제를 취소했습니다.");
-        }
-    }
-
     // ---------------- 좌석 조회 ----------------
 
     private void seatMenu() {
         while (true) {
-            System.out.println("\n--- 좌석 조회 ---");
+            System.out.println("\n--- 좌석 조회 --- (입력 중 q: 취소)");
             System.out.println(" 1. 전체 좌석 목록");
             System.out.println(" 2. 좌석 배치도 (지금)");
             System.out.println(" 3. 좌석 배치도 (날짜·시간 지정)");
             System.out.println(" 4. 좌석 번호로 상세 조회");
             System.out.println(" 0. 이전 메뉴");
-            int choice = input.readInt("메뉴 선택 > ", 0, 4);
+            int choice = input.readMenu("메뉴 선택 > ", 0, 4);
             if (choice == 0) return;
             runSafely(() -> {
                 switch (choice) {
@@ -214,7 +262,7 @@ public class ConsoleMenu {
 
     private void showLayoutAt() {
         LocalDate today = reservationService.now().toLocalDate();
-        LocalDate date = input.readDate("날짜 (yyyy-MM-dd, 엔터=오늘) > ", today, null);
+        LocalDate date = input.readDate("날짜 (yyyy-MM-dd, 엔터=오늘) > ", today, today);
         int hour = input.readInt("시각 (" + ReservationService.OPEN_HOUR + "~"
                 + (ReservationService.CLOSE_HOUR - 1) + ") > ",
                 ReservationService.OPEN_HOUR, ReservationService.CLOSE_HOUR - 1);
@@ -247,14 +295,17 @@ public class ConsoleMenu {
 
     private void showSeatDetail() {
         String id = input.readString("좌석 번호 (예: N01, F03, R1) > ");
-        System.out.println(seatService.find(id));
+        Seat seat = seatService.find(id);
+        System.out.println(seat);
+        System.out.println("[진행 중인 예약 (오늘 이후)]");
+        printReservations(reservationService.findUpcomingBySeat(seat.getId()));
     }
 
     // ---------------- 예약 관리 ----------------
 
     private void reservationMenu() {
         while (true) {
-            System.out.println("\n--- 예약 관리 ---");
+            System.out.println("\n--- 예약 관리 --- (입력 중 q: 취소)");
             System.out.println(" 1. 예약하기");
             System.out.println(" 2. 전체 예약 조회");
             System.out.println(" 3. 회원별 예약 조회");
@@ -262,7 +313,7 @@ public class ConsoleMenu {
             System.out.println(" 5. 예약 변경");
             System.out.println(" 6. 예약 취소");
             System.out.println(" 0. 이전 메뉴");
-            int choice = input.readInt("메뉴 선택 > ", 0, 6);
+            int choice = input.readMenu("메뉴 선택 > ", 0, 6);
             if (choice == 0) return;
             runSafely(() -> {
                 switch (choice) {
@@ -277,20 +328,39 @@ public class ConsoleMenu {
         }
     }
 
+    /** 예약 순서: 회원 -> 날짜 -> 시작 시각 -> (그 시각 배치도) -> 좌석 -> 이용 시간 */
     private void createReservation() {
-        String memberId = input.readString("회원 번호 (예: M001) > ").toUpperCase();
-        Member member = memberService.find(memberId);
-        System.out.println("  " + member);
-
-        Seat seat = seatService.find(input.readString("좌석 번호 (예: N01, F03, R1) > "));
-        System.out.println("  " + seat);
+        Member member = selectMember("회원 번호");
+        if (member == null) return;
 
         LocalDate date = readReservationDate(null);
         int startHour = readStartHour(date);
+
+        LocalDateTime start = date.atTime(startHour, 0);
+        showLayout(start);
+        Seat seat = readAvailableSeat(reservationService.occupiedSeatIds(start));
+        System.out.println("  " + seat);
         int hours = readHours(seat, startHour);
 
         Reservation r = reservationService.reserve(member, seat, date, startHour, hours);
         System.out.println("예약 완료: " + r);
+    }
+
+    /** 좌석 번호 입력. 없는 좌석이거나 그 시각에 사용 중이면 바로 다시 입력받는다. */
+    private Seat readAvailableSeat(Set<String> occupied) {
+        while (true) {
+            String id = input.readString("좌석 번호 (예: N01, F03, R1) > ");
+            try {
+                Seat seat = seatService.find(id);
+                if (occupied.contains(seat.getId())) {
+                    System.out.println("  ! 그 시각에 이미 사용 중인 좌석입니다. 다른 좌석을 선택해주세요.");
+                    continue;
+                }
+                return seat;
+            } catch (NotFoundException e) {
+                System.out.println("  ! " + e.getMessage());
+            }
+        }
     }
 
     /** 예약 날짜 입력. 오늘 이전 날짜는 바로 다시 입력받는다. */
@@ -324,9 +394,9 @@ public class ConsoleMenu {
     }
 
     private void listByMember() {
-        String memberId = input.readString("회원 번호 (예: M001) > ").toUpperCase();
-        memberService.find(memberId);
-        printReservations(reservationService.findByMember(memberId));
+        Member member = selectMember("조회할 회원 번호");
+        if (member == null) return;
+        printReservations(reservationService.findByMember(member.getId()));
     }
 
     private void listByDate() {
@@ -345,11 +415,9 @@ public class ConsoleMenu {
     }
 
     private void changeReservation() {
-        String id = input.readString("변경할 예약 번호 (예: B0001) > ");
-        Reservation r = reservationService.find(id);
-        if (r.getStatus() != ReservationStatus.RESERVED) {
-            throw new IllegalStateException("예약 상태일 때만 변경할 수 있습니다. (현재: " + r.getStatus().getLabel() + ")");
-        }
+        Reservation r = selectReservation("변경할 수 있는 예약",
+                reservationService.findByStatus(ReservationStatus.RESERVED), "변경할 예약 번호");
+        if (r == null) return;
         System.out.println("현재 예약: " + r);
 
         String seatInput = input.readOptional("새 좌석 번호 (엔터=" + r.getSeat().getId() + " 유지) > ");
@@ -391,12 +459,12 @@ public class ConsoleMenu {
 
     private void checkInOutMenu() {
         while (true) {
-            System.out.println("\n--- 입실 / 퇴실 ---");
+            System.out.println("\n--- 입실 / 퇴실 --- (입력 중 q: 취소)");
             System.out.println(" 1. 입실");
             System.out.println(" 2. 퇴실");
             System.out.println(" 3. 현재 이용 중인 목록");
             System.out.println(" 0. 이전 메뉴");
-            int choice = input.readInt("메뉴 선택 > ", 0, 3);
+            int choice = input.readMenu("메뉴 선택 > ", 0, 3);
             if (choice == 0) return;
             runSafely(() -> {
                 switch (choice) {
@@ -408,18 +476,49 @@ public class ConsoleMenu {
         }
     }
 
+    /**
+     * 예약 목록을 보여주고 그중에서 예약 번호를 고른다.
+     * 목록이 비면 안내 후 null, 목록에 없는 번호면 바로 다시 입력받는다. 1건뿐이면 엔터로 선택할 수 있다.
+     */
+    private Reservation selectReservation(String title, List<Reservation> candidates, String prompt) {
+        if (candidates.isEmpty()) {
+            System.out.println(title + "이 없습니다.");
+            return null;
+        }
+        System.out.println("[" + title + "]");
+        candidates.forEach(r -> System.out.println("  " + r));
+        String only = candidates.size() == 1 ? candidates.get(0).getId() : null;
+        while (true) {
+            String id = only == null
+                    ? input.readString(prompt + " (예: B0001) > ")
+                    : input.readOptional(prompt + " (엔터=" + only + ") > ");
+            if (id.isEmpty()) id = only;
+            for (Reservation r : candidates) {
+                if (r.getId().equalsIgnoreCase(id)) return r;
+            }
+            System.out.println("  ! 목록에 있는 예약 번호를 입력해주세요.");
+        }
+    }
+
     private void checkIn() {
-        String id = input.readString("입실할 예약 번호 (예: B0001) > ");
-        Reservation r = reservationService.checkIn(id);
+        Member member = selectMember("입실할 회원 번호");
+        if (member == null) return;
+        Reservation r = selectReservation(member.getName() + " 님의 입실 가능한 예약",
+                reservationService.findByMemberAndStatus(member.getId(), ReservationStatus.RESERVED), "입실할 예약 번호");
+        if (r == null) return;
+        reservationService.checkIn(r.getId());
         System.out.println("입실 완료: " + r);
     }
 
     private void checkOut() {
-        String id = input.readString("퇴실할 예약 번호 (예: B0001) > ");
-        int deducted = reservationService.checkOut(id);
-        Reservation r = reservationService.find(id);
+        Member member = selectMember("퇴실할 회원 번호");
+        if (member == null) return;
+        Reservation r = selectReservation(member.getName() + " 님의 이용 중인 예약",
+                reservationService.findByMemberAndStatus(member.getId(), ReservationStatus.CHECKED_IN), "퇴실할 예약 번호");
+        if (r == null) return;
+        int deducted = reservationService.checkOut(r.getId());
         System.out.printf("퇴실 완료: 실제 이용 %d분, 이용권 %d분 차감%n", r.getUsedMinutes(), deducted);
-        System.out.println("  " + r.getMember());
+        System.out.println("  " + member);
         if (deducted < r.getUsedMinutes()) {
             System.out.println("  ! 잔여 이용권이 부족해 " + (r.getUsedMinutes() - deducted) + "분은 차감하지 못했습니다. 충전이 필요합니다.");
         }

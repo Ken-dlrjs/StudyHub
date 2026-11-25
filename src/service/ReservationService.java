@@ -122,6 +122,24 @@ public class ReservationService {
         return deducted;
     }
 
+    // ---------------- 노쇼 ----------------
+
+    /**
+     * 종료 시각이 지났는데 입실하지 않은(예약 상태인) 예약을 노쇼로 바꾼다.
+     * @return 노쇼로 바뀐 예약 목록
+     */
+    public List<Reservation> processNoShows() {
+        LocalDateTime now = now();
+        List<Reservation> changed = new ArrayList<>();
+        for (Reservation r : reservations) {
+            if (r.getStatus() == ReservationStatus.RESERVED && !r.getEnd().isAfter(now)) {
+                r.markNoShow();
+                changed.add(r);
+            }
+        }
+        return changed;
+    }
+
     // ---------------- 조회 ----------------
 
     public Reservation find(String id) {
@@ -151,6 +169,27 @@ public class ReservationService {
         List<Reservation> result = new ArrayList<>();
         for (Reservation r : findAll()) {
             if (r.getStart().toLocalDate().equals(date)) result.add(r);
+        }
+        return result;
+    }
+
+    /** 특정 회원의 특정 상태 예약 (입실·퇴실 대상 고르기에 사용) */
+    public List<Reservation> findByMemberAndStatus(String memberId, ReservationStatus status) {
+        List<Reservation> result = new ArrayList<>();
+        for (Reservation r : findByMember(memberId)) {
+            if (r.getStatus() == status) result.add(r);
+        }
+        return result;
+    }
+
+    /** 좌석의 진행 중(예약·이용 중)이고 아직 끝나지 않은 예약. 좌석 상세 조회에 사용 */
+    public List<Reservation> findUpcomingBySeat(String seatId) {
+        LocalDateTime now = now();
+        List<Reservation> result = new ArrayList<>();
+        for (Reservation r : findAll()) {
+            if (r.getSeat().getId().equals(seatId) && r.getStatus().isActive() && r.getEnd().isAfter(now)) {
+                result.add(r);
+            }
         }
         return result;
     }
